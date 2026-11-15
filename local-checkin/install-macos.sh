@@ -75,6 +75,8 @@ cat > "$PLIST_PATH" <<EOF
 </plist>
 EOF
 
+plutil -lint "$PLIST_PATH"
+
 launchctl bootout "gui/$(id -u)" "$PLIST_PATH" >/dev/null 2>&1 || true
 launchctl bootstrap "gui/$(id -u)" "$PLIST_PATH"
 
