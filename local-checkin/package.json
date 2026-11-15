@@ -1,0 +1,11 @@
+{
+  "name": "glados-local-browser-checkin",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "checkin": "node checkin.mjs"
+  },
+  "dependencies": {
+    "playwright": "^1.55.0"
+  }
+}
