@@ -11,49 +11,37 @@ const isAlreadyCheckedIn = (message = '', code) => {
     text.includes('明天再试')
 }
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
-
 const isCloudflareFailure = (value) =>
   /cloudflare verification failed|cloudflare.*verification|cf-chl-|challenge-platform|just a moment/i.test(String(value || ''))
 
+const isTurnstileFailure = (value) => {
+  if (value && typeof value === 'object') {
+    return (Number(value.code) === 5 && String(value.reason || '').toLowerCase() === 'turnstile') ||
+      isCloudflareFailure(value.message)
+  }
+  return isCloudflareFailure(value)
+}
 // GLaDOS explicitly reports that no check-in was recorded when this verification fails.
-// Retry only this specific transient response; do not attempt to solve or bypass a challenge.
+// Stop immediately on Turnstile rejection; do not retry or attempt to bypass the challenge.
 const requestJson = async (url, options, stage) => {
-  const retryDelays = [0, 5000, 15000]
-  let lastError
+  const response = await fetch(url, options)
+  const body = await response.text()
+  let data
 
-  for (let attempt = 0; attempt < retryDelays.length; attempt++) {
-    const delay = retryDelays[attempt]
-    if (delay > 0) {
-      console.warn(`${stage}: Cloudflare verification failed; retrying in ${delay / 1000}s (retry ${attempt}/2)`)
-      await sleep(delay)
+  try {
+    data = JSON.parse(body)
+  } catch {
+    if (isTurnstileFailure(body)) {
+      throw new Error(stage + ': Cloudflare Turnstile verification required; this API-only runner cannot complete the browser challenge.')
     }
-
-    const response = await fetch(url, options)
-    const body = await response.text()
-    let data
-
-    try {
-      data = JSON.parse(body)
-    } catch {
-      if (isCloudflareFailure(body)) {
-        lastError = new Error(`${stage}: Cloudflare verification failed`)
-        if (attempt < retryDelays.length - 1) continue
-        throw new Error(`${stage}: Cloudflare verification failed after 3 attempts`)
-      }
-      throw new Error(`${stage}: expected JSON but received HTTP ${response.status}`)
-    }
-
-    if (isCloudflareFailure(data?.message)) {
-      lastError = new Error(`${stage}: ${data.message}`)
-      if (attempt < retryDelays.length - 1) continue
-      throw lastError
-    }
-
-    return data
+    throw new Error(stage + ': expected JSON but received HTTP ' + response.status)
   }
 
-  throw lastError || new Error(`${stage}: request failed`)
+  if (isTurnstileFailure(data)) {
+    throw new Error(stage + ': Cloudflare Turnstile verification required; this API-only runner cannot complete the browser challenge.')
+  }
+
+  return data
 }
 
 const glados = async () => {
