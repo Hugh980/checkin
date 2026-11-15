@@ -11,6 +11,51 @@ const isAlreadyCheckedIn = (message = '', code) => {
     text.includes('明天再试')
 }
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+const isCloudflareFailure = (value) =>
+  /cloudflare verification failed|cloudflare.*verification|cf-chl-|challenge-platform|just a moment/i.test(String(value || ''))
+
+// GLaDOS explicitly reports that no check-in was recorded when this verification fails.
+// Retry only this specific transient response; do not attempt to solve or bypass a challenge.
+const requestJson = async (url, options, stage) => {
+  const retryDelays = [0, 5000, 15000]
+  let lastError
+
+  for (let attempt = 0; attempt < retryDelays.length; attempt++) {
+    const delay = retryDelays[attempt]
+    if (delay > 0) {
+      console.warn(`${stage}: Cloudflare verification failed; retrying in ${delay / 1000}s (retry ${attempt}/2)`)
+      await sleep(delay)
+    }
+
+    const response = await fetch(url, options)
+    const body = await response.text()
+    let data
+
+    try {
+      data = JSON.parse(body)
+    } catch {
+      if (isCloudflareFailure(body)) {
+        lastError = new Error(`${stage}: Cloudflare verification failed`)
+        if (attempt < retryDelays.length - 1) continue
+        throw new Error(`${stage}: Cloudflare verification failed after 3 attempts`)
+      }
+      throw new Error(`${stage}: expected JSON but received HTTP ${response.status}`)
+    }
+
+    if (isCloudflareFailure(data?.message)) {
+      lastError = new Error(`${stage}: ${data.message}`)
+      if (attempt < retryDelays.length - 1) continue
+      throw lastError
+    }
+
+    return data
+  }
+
+  throw lastError || new Error(`${stage}: request failed`)
+}
+
 const glados = async () => {
   const notice = []
   let failed = false
@@ -35,32 +80,38 @@ const glados = async () => {
       }
 
       // Validate the session on the same domain that will be used for check-in.
-      const before = await fetch(`${origin}/api/user/status`, {
-        method: 'GET',
-        headers: common,
-      }).then((r) => r.json())
+      const before = await requestJson(
+        `${origin}/api/user/status`,
+        { method: 'GET', headers: common },
+        'Session validation'
+      )
 
       if (before?.code || !before?.data) {
         throw new Error(before?.message || `Not logged in on ${domain}`)
       }
 
-      const action = await fetch(`${origin}/api/user/checkin`, {
-        method: 'POST',
-        headers: {
-          ...common,
-          'content-type': 'application/json;charset=UTF-8',
+      const action = await requestJson(
+        `${origin}/api/user/checkin`,
+        {
+          method: 'POST',
+          headers: {
+            ...common,
+            'content-type': 'application/json;charset=UTF-8',
+          },
+          body: JSON.stringify({ token: domain }),
         },
-        body: JSON.stringify({ token: domain }),
-      }).then((r) => r.json())
+        'Check-in request'
+      )
 
       if (action?.code && !isAlreadyCheckedIn(action?.message, action?.code)) {
         throw new Error(action?.message || 'Check-in failed')
       }
 
-      const status = await fetch(`${origin}/api/user/status`, {
-        method: 'GET',
-        headers: common,
-      }).then((r) => r.json())
+      const status = await requestJson(
+        `${origin}/api/user/status`,
+        { method: 'GET', headers: common },
+        'Post-check-in status'
+      )
 
       if (status?.code || !status?.data) {
         throw new Error(status?.message || 'Failed to read account status')
