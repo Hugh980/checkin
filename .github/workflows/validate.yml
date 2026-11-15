@@ -1,0 +1,25 @@
+name: validate
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Check JavaScript syntax
+        run: |
+          node --check main.js
+          node --check local-checkin/checkin.mjs
+      - name: Validate local package metadata
+        run: node -e 'JSON.parse(require("node:fs").readFileSync("local-checkin/package.json", "utf8"))'
