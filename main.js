@@ -11,8 +11,6 @@ const isAlreadyCheckedIn = (message = '', code) => {
     text.includes('明天再试')
 }
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
-
 const isCloudflareFailure = (value) =>
   /cloudflare verification failed|cloudflare.*verification|cf-chl-|challenge-platform|just a moment/i.test(String(value || ''))
 
@@ -24,7 +22,7 @@ const isTurnstileFailure = (value) => {
   return isCloudflareFailure(value)
 }
 // GLaDOS explicitly reports that no check-in was recorded when this verification fails.
-// Retry only this specific transient response; do not attempt to solve or bypass a challenge.
+// Stop immediately on Turnstile rejection; do not retry or attempt to bypass the challenge.
 const requestJson = async (url, options, stage) => {
   const response = await fetch(url, options)
   const body = await response.text()
