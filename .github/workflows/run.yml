@@ -1,14 +1,21 @@
 name: run
 
+# GitHub-hosted runners cannot complete an interactive Cloudflare Turnstile challenge.
+# Keep this workflow for explicit manual diagnostics only; daily browser opening is handled locally.
 on:
   workflow_dispatch:
-  push:
-  schedule:
-    - cron: 10 16 * * *
+
+permissions:
+  contents: read
+
+concurrency:
+  group: glados-checkin-manual
+  cancel-in-progress: false
 
 jobs:
   run:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
