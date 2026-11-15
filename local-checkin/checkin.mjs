@@ -8,7 +8,8 @@ const domain = (process.env.GLADOS_DOMAIN || "glados.vip")
   .replace(/^https?:\/\//i, "")
   .replace(/\/+$/, "");
 const channel = process.env.GLADOS_BROWSER_CHANNEL || "chrome";
-const waitMinutes = Math.max(1, Number(process.env.GLADOS_WAIT_MINUTES || "10"));
+const requestedWaitMinutes = Number(process.env.GLADOS_WAIT_MINUTES || "10");
+const waitMinutes = Number.isFinite(requestedWaitMinutes) ? Math.max(1, requestedWaitMinutes) : 10;
 const timeoutMs = waitMinutes * 60 * 1000;
 const checkinUrl = "https://" + domain + "/console/checkin";
 const profileDir = join(
