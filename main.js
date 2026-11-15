@@ -16,6 +16,14 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 const isCloudflareFailure = (value) =>
   /cloudflare verification failed|cloudflare.*verification|cf-chl-|challenge-platform|just a moment/i.test(String(value || ''))
 
+const isTurnstileFailure = (value) => {
+  if (value && typeof value === 'object') {
+    return (Number(value.code) === 5 && String(value.reason || '').toLowerCase() === 'turnstile') ||
+      isCloudflareFailure(value.message)
+  }
+  return isCloudflareFailure(value) || /code\\s*=\\s*5[\\s\\S]*reason\\s*=\\s*turnstile/i.test(String(value || ''))
+}
+
 // GLaDOS explicitly reports that no check-in was recorded when this verification fails.
 // Retry only this specific transient response; do not attempt to solve or bypass a challenge.
 const requestJson = async (url, options, stage) => {
@@ -36,12 +44,18 @@ const requestJson = async (url, options, stage) => {
     try {
       data = JSON.parse(body)
     } catch {
-      if (isCloudflareFailure(body)) {
+      if (isTurnstileFailure(body)) {
+        throw new Error(stage + ': Cloudflare Turnstile verification required; no API retry was attempted. Use the local browser flow.')
+      }
         lastError = new Error(`${stage}: Cloudflare verification failed`)
         if (attempt < retryDelays.length - 1) continue
         throw new Error(`${stage}: Cloudflare verification failed after 3 attempts`)
       }
       throw new Error(`${stage}: expected JSON but received HTTP ${response.status}`)
+    }
+
+    if (isTurnstileFailure(data)) {
+      throw new Error(stage + ': Cloudflare Turnstile verification required; no API retry was attempted. Use the local browser flow.')
     }
 
     if (isCloudflareFailure(data?.message)) {
